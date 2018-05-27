@@ -1,4 +1,4 @@
-import { voronoi } from 'd3';
+import 'd3';
 import { getC } from './pallete';
 import * as firebase from './lib/firebase/index';
 import { recordSetup, recordFrame } from './capture';
@@ -15,21 +15,12 @@ const config = {
 };
 const myApp = firebase.initializeApp(config);
 console.log(myApp);
-let p = new p5((s: p5) => {
-  // s.setup = null;
-  // s.draw = null;
-});
+let p = new p5((s: p5) => true);
 p.setup = function() {
   p.createCanvas(500, 500);
-  p.createDiv('steve');
-  let y = voronoi();
-  let c: p5.Sprite = p.createSprite(30, 30, 20, 20);
-  console.log(getC(0, 0));
 };
 p.draw = function() {
-  // console.log(p.mouseY);
   p.background(p.frameCount % 255);
-  p.drawSprites();
 };
 
 const sketch = (p: p5) => {
