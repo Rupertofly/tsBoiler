@@ -17,3 +17,17 @@ declare class CCapture {
   save(): void;
   start(): void;
 }
+declare function checkNested(...obj: string[]): boolean;
+
+declare function distToSegment(
+  p: [number, number],
+  v: [number, number],
+  w: [number, number]
+): number;
+/**
+ * Returns the max radius of an inscribed circle
+ *
+ * @param {[number, number][]} polygon to inscribe
+ * @returns {number} max radius
+ */
+declare function getMinDist(poly: [number, number][]): number;
