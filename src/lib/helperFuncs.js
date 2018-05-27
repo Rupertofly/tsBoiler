@@ -37,7 +37,7 @@ function dist2(v, w) {
 function distToSegmentSquared(p, v, w) {
   var l2 = dist2(v, w);
   if (l2 === 0) return dist2(p, v);
-  var t = ((p.x - v[0]) * (w[0] - v[0]) + (p.y - v[1]) * (w[1] - v[1])) / l2;
+  var t = ((p[0] - v[0]) * (w[0] - v[0]) + (p[1] - v[1]) * (w[1] - v[1])) / l2;
   t = Math.max(0, Math.min(1, t));
   return dist2(p, [v[0] + t * (w[0] - v[0]), v[1] + t * (w[1] - v[1])]);
 }
@@ -65,5 +65,11 @@ function getMinDist(poly) {
     let nextP = poly[(i + 1) % poly.length];
     return distToSegment(c, thisP, nextP);
   });
-  return min(r);
+  return Math.min(...r);
 }
+Number.prototype.bwtn = function(a, b, inclusive) {
+  var min = Math.min(a, b),
+    max = Math.max(a, b);
+
+  return inclusive ? this >= min && this <= max : this > min && this < max;
+};

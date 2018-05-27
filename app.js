@@ -4,22 +4,1289 @@ FuseBox.pkg("default", {}, function(___scope___){
 ___scope___.file("index.js", function(exports, require, module, __filename, __dirname){
 
 "use strict";
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
+    result["default"] = mod;
+    return result;
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-require("d3");
+const d3 = __importStar(require("d3"));
+const pallete_1 = require("./pallete");
+const capture_1 = require("./capture");
 // @ts-ignore
+const b_spline_1 = __importDefault(require("b-spline"));
 // @ts-ignore
 let p = new p5((s) => true);
+const pointNumber = 150;
+let activeSites;
+let vor;
+let points;
+let recorder;
 p.setup = function () {
-    p.createCanvas(500, 500);
+    p.createCanvas(640, 480);
+    recorder = capture_1.recordSetup();
+    vor = d3.voronoi().extent([[-20, -20], [p.width + 20, p.height + 20]]);
+    points = d3
+        .range(pointNumber)
+        .map(() => [p.random(20, p.width - 20), p.random(20, p.height - 20)]);
+    let diagram = vor([...points]);
+    diagram.polygons().map((poly, i) => {
+        if (i > points.length)
+            return;
+        points[i] = d3.polygonCentroid(poly);
+    });
+    diagram = vor([...points]);
+    let groupingOne = [];
+    activeSites = [];
+    let polygonList = diagram.polygons();
+    polygonList.map((pl, i) => {
+        if (i >= points.length)
+            return;
+        let poly = pl.slice();
+        if (p.abs(points[i][0] - p.width / 2) < 75 &&
+            p.abs(points[i][1] - p.height / 2) < 75) {
+            activeSites.push(i);
+            p.fill(pallete_1.getC(pallete_1.hues.reds, 5).hex);
+            p.stroke(pallete_1.getC(pallete_1.hues.reds, 6).hex);
+            p.strokeWeight(3);
+        }
+    });
+    polygonList.map((pl, i) => {
+        if (i > points.length)
+            return;
+        p.noFill();
+        p.beginShape();
+        pl.map(x => {
+            p.vertex(x[0], x[1]);
+        });
+        p.endShape(p.CLOSE);
+    });
+    for (let [i, x] of diagram.edges.entries()) {
+        if (!x)
+            continue;
+        if (!x.left || !x.right)
+            continue;
+        let [l, r] = [x.left.index, x.right.index];
+        if (!activeSites.includes(l) && !activeSites.includes(r))
+            continue;
+        if (activeSites.includes(l) && activeSites.includes(r))
+            continue;
+        let pt = groupingOne.find(value => x[0] === value.p);
+        if (!pt) {
+            pt = { p: x[0], neighbours: [] };
+            groupingOne.push(pt);
+        }
+        let pt2 = groupingOne.find(value => x[1] === value.p);
+        if (!pt2) {
+            pt2 = { p: x[1], neighbours: [] };
+            groupingOne.push(pt2);
+        }
+        if (!pt.neighbours.includes(pt2)) {
+            pt.neighbours.push(pt2);
+        }
+        if (!pt2.neighbours.includes(pt)) {
+            pt2.neighbours.push(pt);
+        }
+        p.noStroke();
+        p.fill(0);
+        p.ellipse(x[0][0], x[0][1], 12);
+        groupingOne.push();
+        p.fill(255, 0, 0);
+        p.fill(0);
+        p.ellipse(x[1][0], x[1][1], 12);
+        p.fill(255, 0, 0);
+    }
+    let b = p.color(pallete_1.getC(pallete_1.hues.blues, 5).hex);
+    b.setAlpha(120);
+    p.fill(b);
 };
 p.draw = function () {
-    p.background(p.frameCount % 255);
+    p.background(255);
+    points[pointNumber] = [p.mouseX, p.mouseY];
+    // if (!activeSites.includes(pointNumber)) activeSites.push(pointNumber);
+    let t = 0;
+    let vDiagram = vor(points);
+    let polygons = vDiagram.polygons();
+    let blobs = getBlob(activeSites, vDiagram);
+    if (blobs.length > 1) {
+    }
+    for (let blobShape of blobs) {
+        blobShape = [
+            ...blobShape,
+            ...blobShape.slice(0, Math.min(blobShape.length, 4))
+        ];
+        p.fill(pallete_1.getC(pallete_1.hues.greens, 4).hex);
+        p.noStroke();
+        p.beginShape();
+        for (let t = 0; t < 1; t += 0.0005) {
+            let [x, y] = b_spline_1.default(t, 4, blobShape);
+            p.curveVertex(x, y);
+        }
+        p.endShape();
+    }
+    p.noFill();
+    p.stroke(pallete_1.getC(pallete_1.hues.neutrals, 6).hex);
+    p.strokeWeight(3);
+    polygons.map((poly, i) => {
+        if (activeSites.includes(i)) {
+            p.fill(pallete_1.getC(pallete_1.hues.neutrals, 6).hex);
+            let w = getMinDist(poly);
+            let [x, y] = d3.polygonCentroid(poly);
+            p.ellipse(x, y, w + 3);
+        }
+        if (i !== pointNumber)
+            points[i] = d3.polygonCentroid(poly);
+    });
+    capture_1.recordFrame(p, recorder, 250);
 };
 const sketch = (p) => {
     p.setup = setup;
     p.draw = draw;
 };
+function getBlob(sites, diagram) {
+    let blobs = [];
+    const activeSites = sites;
+    let firstPass = [];
+    for (let [i, x] of diagram.edges.entries()) {
+        if (!x)
+            continue;
+        if (!x.left || !x.right)
+            continue;
+        let [l, r] = [x.left.index, x.right.index];
+        if (!activeSites.includes(l) && !activeSites.includes(r))
+            continue;
+        if (activeSites.includes(l) && activeSites.includes(r))
+            continue;
+        let pt = firstPass.find(value => x[0] === value.p);
+        if (!pt) {
+            pt = { p: x[0], neighbours: [] };
+            firstPass.push(pt);
+        }
+        let pt2 = firstPass.find(value => x[1] === value.p);
+        if (!pt2) {
+            pt2 = { p: x[1], neighbours: [] };
+            firstPass.push(pt2);
+        }
+        if (!pt.neighbours.includes(pt2)) {
+            pt.neighbours.push(pt2);
+        }
+        if (!pt2.neighbours.includes(pt)) {
+            pt2.neighbours.push(pt);
+        }
+    }
+    let isAllBlobs = false;
+    let blobCount = 0;
+    let sortedParts = [];
+    while (!isAllBlobs) {
+        sortedParts.push([]);
+        let partSorter = (part, sParts) => {
+            sParts.push(part);
+            if (part.neighbours[0] != null && part.neighbours[1] != null) {
+                if (!sParts.includes(part.neighbours[0])) {
+                    partSorter(part.neighbours[0], sParts);
+                }
+                else if (!sParts.includes(part.neighbours[1])) {
+                    partSorter(part.neighbours[1], sParts);
+                }
+            }
+        };
+        let isDone;
+        let flatenedParts = [];
+        let emptyParts = [];
+        sortedParts.map(v => v.map(b => flatenedParts.push(b)));
+        for (let part of firstPass) {
+            if (!flatenedParts.includes(part)) {
+                emptyParts.push(part);
+            }
+        }
+        partSorter(emptyParts[0], sortedParts[blobCount]);
+        flatenedParts = [];
+        emptyParts = [];
+        sortedParts.map(v => v.map(b => flatenedParts.push(b)));
+        for (let part of firstPass) {
+            if (!flatenedParts.includes(part)) {
+                emptyParts.push(part);
+            }
+        }
+        if (emptyParts.length < 1)
+            isAllBlobs = true;
+        let splineParts = sortedParts[blobCount].map((v, i) => {
+            return [v.p[0], v.p[1]];
+        });
+        blobs.push(splineParts);
+        blobCount++;
+    }
+    if (blobCount > 3)
+        isAllBlobs = true;
+    return blobs;
+}
 //# sourceMappingURL=app.js.map
+});
+___scope___.file("pallete.js", function(exports, require, module, __filename, __dirname){
+
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+var hues;
+(function (hues) {
+    hues[hues["cools"] = 0] = "cools";
+    hues[hues["warms"] = 1] = "warms";
+    hues[hues["neutrals"] = 2] = "neutrals";
+    hues[hues["pinks"] = 3] = "pinks";
+    hues[hues["purples"] = 4] = "purples";
+    hues[hues["violets"] = 5] = "violets";
+    hues[hues["blues"] = 6] = "blues";
+    hues[hues["aquas"] = 7] = "aquas";
+    hues[hues["greens"] = 8] = "greens";
+    hues[hues["limes"] = 9] = "limes";
+    hues[hues["yellows"] = 10] = "yellows";
+    hues[hues["browns"] = 11] = "browns";
+    hues[hues["oranges"] = 12] = "oranges";
+    hues[hues["apricots"] = 13] = "apricots";
+    hues[hues["reds"] = 14] = "reds";
+})(hues = exports.hues || (exports.hues = {}));
+var shades;
+(function (shades) {
+    shades[shades["black"] = 0] = "black";
+    shades[shades["dark"] = 1] = "dark";
+    shades[shades["mediumDark"] = 2] = "mediumDark";
+    shades[shades["medium"] = 3] = "medium";
+    shades[shades["mediumLight"] = 4] = "mediumLight";
+    shades[shades["light"] = 5] = "light";
+    shades[shades["white"] = 6] = "white";
+})(shades = exports.shades || (exports.shades = {}));
+exports.PalleteArray = [
+    [
+        {
+            red: 0.2117647,
+            alpha: 1,
+            name: "BigStone",
+            blue: 0.2745098,
+            green: 0.254902,
+            hex: "#364146"
+        },
+        {
+            red: 0.2666667,
+            alpha: 1,
+            name: "RiverBed",
+            blue: 0.3372549,
+            green: 0.3137255,
+            hex: "#445056"
+        },
+        {
+            red: 0.4666667,
+            alpha: 1,
+            name: "RegentGray",
+            blue: 0.5333334,
+            green: 0.5137255,
+            hex: "#778388"
+        },
+        {
+            red: 0.6627451,
+            alpha: 1,
+            name: "Casper",
+            blue: 0.7294118,
+            green: 0.7098039,
+            hex: "#a9b5ba"
+        },
+        {
+            red: 0.07058824,
+            alpha: 1,
+            name: "Mirage",
+            blue: 0.1372549,
+            green: 0.1176471,
+            hex: "#121e23"
+        },
+        {
+            red: 0.8588235,
+            alpha: 1,
+            name: "Tranquil",
+            blue: 0.9254902,
+            green: 0.9058824,
+            hex: "#dbe7ec"
+        },
+        {
+            red: 0.8980392,
+            alpha: 1,
+            name: "AquaSqueeze",
+            blue: 0.9647059,
+            green: 0.945098,
+            hex: "#e5f1f6"
+        }
+    ],
+    [
+        {
+            red: 0.1529412,
+            alpha: 1,
+            name: "Oil",
+            blue: 0.08235294,
+            green: 0.1176471,
+            hex: "#271e15"
+        },
+        {
+            red: 0.2941177,
+            alpha: 1,
+            name: "SpaceShuttle",
+            blue: 0.2235294,
+            green: 0.2627451,
+            hex: "#4b4339"
+        },
+        {
+            red: 0.34902,
+            alpha: 1,
+            name: "Masala",
+            blue: 0.28235,
+            green: 0.31765,
+            hex: "#595148"
+        },
+        {
+            red: 0.5490196,
+            alpha: 1,
+            name: "Schooner",
+            blue: 0.4745098,
+            green: 0.5137255,
+            hex: "#8c8379"
+        },
+        {
+            red: 0.7450981,
+            alpha: 1,
+            name: "Tide",
+            blue: 0.6745098,
+            green: 0.7098039,
+            hex: "#beb5ac"
+        },
+        {
+            red: 0.9411765,
+            alpha: 1,
+            name: "DesertStorm",
+            blue: 0.8705882,
+            green: 0.9098039,
+            hex: "#f0e8de"
+        },
+        {
+            red: 0.9803922,
+            alpha: 1,
+            name: "WhiteLinen",
+            blue: 0.9098039,
+            green: 0.9490196,
+            hex: "#faf2e8"
+        }
+    ],
+    [
+        {
+            red: 0.05882353,
+            alpha: 1,
+            name: "Onyx",
+            blue: 0.05882353,
+            green: 0.05882353,
+            hex: "#0f0f0f"
+        },
+        {
+            red: 0.2156863,
+            alpha: 1,
+            name: "Tuatara",
+            blue: 0.2156863,
+            green: 0.2156863,
+            hex: "#373737"
+        },
+        {
+            red: 0.2784314,
+            alpha: 1,
+            name: "Charcoal",
+            blue: 0.2784314,
+            green: 0.2784314,
+            hex: "#474747"
+        },
+        {
+            red: 0.4980392,
+            alpha: 1,
+            name: "Tin",
+            blue: 0.4980392,
+            green: 0.4980392,
+            hex: "#7f7f7f"
+        },
+        {
+            red: 0.7176471,
+            alpha: 1,
+            name: "Loblolly",
+            blue: 0.7176471,
+            green: 0.7176471,
+            hex: "#b7b7b7"
+        },
+        {
+            red: 0.9372549,
+            alpha: 1,
+            name: "Gallery",
+            blue: 0.9372549,
+            green: 0.9372549,
+            hex: "#efefef"
+        },
+        {
+            red: 0.9803922,
+            alpha: 1,
+            name: "Alabaster",
+            blue: 0.9803922,
+            green: 0.9803922,
+            hex: "#fafafa"
+        }
+    ],
+    [
+        {
+            red: 0.6313726,
+            alpha: 1,
+            name: "RoyalHeath",
+            blue: 0.5058824,
+            green: 0.1960784,
+            hex: "#a13281"
+        },
+        {
+            red: 0.7450981,
+            alpha: 1,
+            name: "Byzantine",
+            blue: 0.6039216,
+            green: 0.227451,
+            hex: "#be3a9a"
+        },
+        {
+            red: 0.827451,
+            alpha: 1,
+            name: "DeepFuchsia",
+            blue: 0.6862745,
+            green: 0.3098039,
+            hex: "#d34faf"
+        },
+        {
+            red: 0.9333333,
+            alpha: 1,
+            name: "NeonFuchsia",
+            blue: 0.7568628,
+            green: 0.2862745,
+            hex: "#ee49c1"
+        },
+        {
+            red: 0.945098,
+            alpha: 1,
+            name: "RosePink",
+            blue: 0.8039216,
+            green: 0.427451,
+            hex: "#f16dcd"
+        },
+        {
+            red: 0.972549,
+            alpha: 1,
+            name: "Chantilly",
+            blue: 0.9019608,
+            green: 0.7137255,
+            hex: "#f8b6e6"
+        },
+        {
+            red: 0.9882353,
+            alpha: 1,
+            name: "PaleRose",
+            blue: 0.9607843,
+            green: 0.8862745,
+            hex: "#fce2f5"
+        }
+    ],
+    [
+        {
+            red: 0.427451,
+            alpha: 1,
+            name: "PurpleHeart",
+            blue: 0.6117647,
+            green: 0.2196078,
+            hex: "#6d389c"
+        },
+        {
+            red: 0.5058824,
+            alpha: 1,
+            name: "Studio",
+            blue: 0.7333333,
+            green: 0.254902,
+            hex: "#8141bb"
+        },
+        {
+            red: 0.5843138,
+            alpha: 1,
+            name: "Amethyst",
+            blue: 0.8156863,
+            green: 0.3333333,
+            hex: "#9555d0"
+        },
+        {
+            red: 0.6313726,
+            alpha: 1,
+            name: "LavenderIndigo",
+            blue: 0.9176471,
+            green: 0.3176471,
+            hex: "#a151ea"
+        },
+        {
+            red: 0.7058824,
+            alpha: 1,
+            name: "SoftPurple",
+            blue: 0.9333333,
+            green: 0.454902,
+            hex: "#b474ee"
+        },
+        {
+            red: 0.8509804,
+            alpha: 1,
+            name: "Perfume",
+            blue: 0.9686275,
+            green: 0.7254902,
+            hex: "#d9b9f7"
+        },
+        {
+            red: 0.9411765,
+            alpha: 1,
+            name: "BlueChalk",
+            blue: 0.9882353,
+            green: 0.8901961,
+            hex: "#f0e3fc"
+        }
+    ],
+    [
+        {
+            red: 0.2392157,
+            alpha: 1,
+            name: "DarkSlateBlue",
+            blue: 0.5529412,
+            green: 0.2470588,
+            hex: "#3d3f8d"
+        },
+        {
+            red: 0.282353,
+            alpha: 1,
+            name: "GovernorBay",
+            blue: 0.6627451,
+            green: 0.2901961,
+            hex: "#484aa9"
+        },
+        {
+            red: 0.3607843,
+            alpha: 1,
+            name: "BlueViolet",
+            blue: 0.7411765,
+            green: 0.372549,
+            hex: "#5c5fbd"
+        },
+        {
+            red: 0.3529412,
+            alpha: 1,
+            name: "Iris",
+            blue: 0.827451,
+            green: 0.3647059,
+            hex: "#5a5dd3"
+        },
+        {
+            red: 0.4823529,
+            alpha: 1,
+            name: "ChetwodeBlue",
+            blue: 0.8627451,
+            green: 0.4901961,
+            hex: "#7b7ddc"
+        },
+        {
+            red: 0.7411765,
+            alpha: 1,
+            name: "Melrose",
+            blue: 0.9294118,
+            green: 0.7450981,
+            hex: "#bdbeed"
+        },
+        {
+            red: 0.8980392,
+            alpha: 1,
+            name: "Lavender",
+            blue: 0.972549,
+            green: 0.8980392,
+            hex: "#e5e5f8"
+        }
+    ],
+    [
+        {
+            red: 0.1294118,
+            alpha: 1,
+            name: "Calypso",
+            blue: 0.5647059,
+            green: 0.4352941,
+            hex: "#216f90"
+        },
+        {
+            red: 0.145098,
+            alpha: 1,
+            name: "Astral",
+            blue: 0.6705883,
+            green: 0.509804,
+            hex: "#2582ab"
+        },
+        {
+            red: 0.2235294,
+            alpha: 1,
+            name: "BostonBlue",
+            blue: 0.7529412,
+            green: 0.5921569,
+            hex: "#3997c0"
+        },
+        {
+            red: 0.1803922,
+            alpha: 1,
+            name: "CuriousBlue",
+            blue: 0.8392157,
+            green: 0.6392157,
+            hex: "#2ea3d6"
+        },
+        {
+            red: 0.345098,
+            alpha: 1,
+            name: "Malibu",
+            blue: 0.8705882,
+            green: 0.7098039,
+            hex: "#58b5de"
+        },
+        {
+            red: 0.6705883,
+            alpha: 1,
+            name: "NonPhotoBlue",
+            blue: 0.9372549,
+            green: 0.854902,
+            hex: "#abdaef"
+        },
+        {
+            red: 0.8666667,
+            alpha: 1,
+            name: "PattensBlue",
+            blue: 0.9764706,
+            green: 0.9411765,
+            hex: "#ddf0f9"
+        }
+    ],
+    [
+        {
+            red: 0.2078431,
+            alpha: 1,
+            name: "Viridian",
+            blue: 0.4156863,
+            green: 0.5450981,
+            hex: "#358b6a"
+        },
+        {
+            red: 0.2352941,
+            alpha: 1,
+            name: "OceanGreen",
+            blue: 0.4784314,
+            green: 0.6392157,
+            hex: "#3ca37a"
+        },
+        {
+            red: 0.3137255,
+            alpha: 1,
+            name: "Mint",
+            blue: 0.5607843,
+            green: 0.7215686,
+            hex: "#50b88f"
+        },
+        {
+            red: 0.2941177,
+            alpha: 1,
+            name: "Shamrock",
+            blue: 0.6,
+            green: 0.8,
+            hex: "#4bcc99"
+        },
+        {
+            red: 0.4352941,
+            alpha: 1,
+            name: "MediumAquamarine",
+            blue: 0.6784314,
+            green: 0.8392157,
+            hex: "#6fd6ad"
+        },
+        {
+            red: 0.7176471,
+            alpha: 1,
+            name: "WaterLeaf",
+            blue: 0.8392157,
+            green: 0.9215686,
+            hex: "#b7ebd6"
+        },
+        {
+            red: 0.8862745,
+            alpha: 1,
+            name: "WhiteIce",
+            blue: 0.9372549,
+            green: 0.9686275,
+            hex: "#e2f7ef"
+        }
+    ],
+    [
+        {
+            red: 0.2941177,
+            alpha: 1,
+            name: "HippieGreen",
+            blue: 0.2901961,
+            green: 0.5176471,
+            hex: "#4b844a"
+        },
+        {
+            red: 0.3411765,
+            alpha: 1,
+            name: "FruitSalad",
+            blue: 0.3176471,
+            green: 0.6078432,
+            hex: "#579b51"
+        },
+        {
+            red: 0.4235294,
+            alpha: 1,
+            name: "Fern",
+            blue: 0.3960784,
+            green: 0.6901961,
+            hex: "#6cb065"
+        },
+        {
+            red: 0.427451,
+            alpha: 1,
+            name: "Mantis",
+            blue: 0.3960784,
+            green: 0.7607843,
+            hex: "#6dc265"
+        },
+        {
+            red: 0.5411765,
+            alpha: 1,
+            name: "DeYork",
+            blue: 0.5176471,
+            green: 0.8078431,
+            hex: "#8ace84"
+        },
+        {
+            red: 0.772549,
+            alpha: 1,
+            name: "GrannyApple",
+            blue: 0.7568628,
+            green: 0.9058824,
+            hex: "#c5e7c1"
+        },
+        {
+            red: 0.9098039,
+            alpha: 1,
+            name: "AquaSpringCool",
+            blue: 0.9019608,
+            green: 0.9607843,
+            hex: "#e8f5e6"
+        }
+    ],
+    [
+        {
+            red: 0.4705882,
+            alpha: 1,
+            name: "Asparagus",
+            blue: 0.2980392,
+            green: 0.5764706,
+            hex: "#78934c"
+        },
+        {
+            red: 0.5529412,
+            alpha: 1,
+            name: "ChelseaCucumber",
+            blue: 0.3176471,
+            green: 0.6784314,
+            hex: "#8dad51"
+        },
+        {
+            red: 0.6313726,
+            alpha: 1,
+            name: "Olivine",
+            blue: 0.3960784,
+            green: 0.7568628,
+            hex: "#a1c165"
+        },
+        {
+            red: 0.6901961,
+            alpha: 1,
+            name: "Conifer",
+            blue: 0.3960784,
+            green: 0.8470588,
+            hex: "#b0d865"
+        },
+        {
+            red: 0.7529412,
+            alpha: 1,
+            name: "YellowGreen",
+            blue: 0.5176471,
+            green: 0.8784314,
+            hex: "#c0e084"
+        },
+        {
+            red: 0.8745098,
+            alpha: 1,
+            name: "BerylGreen",
+            blue: 0.7568628,
+            green: 0.9372549,
+            hex: "#dfefc1"
+        },
+        {
+            red: 0.9098039,
+            alpha: 1,
+            name: "AquaSpringWarm",
+            blue: 0.9019608,
+            green: 0.9607843,
+            hex: "#e8f5e6"
+        }
+    ],
+    [
+        {
+            red: 0.6352941,
+            alpha: 1,
+            name: "MuddyWaters",
+            blue: 0.2901961,
+            green: 0.5529412,
+            hex: "#a28d4a"
+        },
+        {
+            red: 0.7450981,
+            alpha: 1,
+            name: "Sundance",
+            blue: 0.3098039,
+            green: 0.6509804,
+            hex: "#bea64f"
+        },
+        {
+            red: 0.827451,
+            alpha: 1,
+            name: "Tacha",
+            blue: 0.3921569,
+            green: 0.7333333,
+            hex: "#d3bb64"
+        },
+        {
+            red: 0.9333333,
+            alpha: 1,
+            name: "GoldenSand",
+            blue: 0.3882353,
+            green: 0.8156863,
+            hex: "#eed063"
+        },
+        {
+            red: 0.945098,
+            alpha: 1,
+            name: "Buff",
+            blue: 0.509804,
+            green: 0.8509804,
+            hex: "#f1d982"
+        },
+        {
+            red: 0.972549,
+            alpha: 1,
+            name: "Blond",
+            blue: 0.7568628,
+            green: 0.9254902,
+            hex: "#f8ecc1"
+        },
+        {
+            red: 0.9882353,
+            alpha: 1,
+            name: "OldLaceGreen",
+            blue: 0.9019608,
+            green: 0.9686275,
+            hex: "#fcf7e6"
+        }
+    ],
+    [
+        {
+            red: 0.654902,
+            alpha: 1,
+            name: "Alpine",
+            blue: 0.2588235,
+            green: 0.5058824,
+            hex: "#a78142"
+        },
+        {
+            red: 0.7686275,
+            alpha: 1,
+            name: "Tussock",
+            blue: 0.2666667,
+            green: 0.5960785,
+            hex: "#c49844"
+        },
+        {
+            red: 0.8470588,
+            alpha: 1,
+            name: "RobRoy",
+            blue: 0.345098,
+            green: 0.6745098,
+            hex: "#d8ac58"
+        },
+        {
+            red: 0.9607843,
+            alpha: 1,
+            name: "SaffronMango",
+            blue: 0.3333333,
+            green: 0.7450981,
+            hex: "#f5be55"
+        },
+        {
+            red: 0.9686275,
+            alpha: 1,
+            name: "Chardonnay",
+            blue: 0.4666667,
+            green: 0.7960784,
+            hex: "#f7cb77"
+        },
+        {
+            red: 0.9843137,
+            alpha: 1,
+            name: "DairyCream",
+            blue: 0.7333333,
+            green: 0.8980392,
+            hex: "#fbe5bb"
+        },
+        {
+            red: 0.9921569,
+            alpha: 1,
+            name: "OldLaceYellow",
+            blue: 0.8941177,
+            green: 0.9607843,
+            hex: "#fdf5e4"
+        }
+    ],
+    [
+        {
+            red: 0.6705883,
+            alpha: 1,
+            name: "Bourbon",
+            blue: 0.2235294,
+            green: 0.4470588,
+            hex: "#ab7239"
+        },
+        {
+            red: 0.7882353,
+            alpha: 1,
+            name: "GoldenBell",
+            blue: 0.2235294,
+            green: 0.5254902,
+            hex: "#c98639"
+        },
+        {
+            red: 0.8666667,
+            alpha: 1,
+            name: "FireBush",
+            blue: 0.3019608,
+            green: 0.6039216,
+            hex: "#dd9a4d"
+        },
+        {
+            red: 0.9843137,
+            alpha: 1,
+            name: "NeonCarrot",
+            blue: 0.2784314,
+            green: 0.654902,
+            hex: "#fba747"
+        },
+        {
+            red: 0.9882353,
+            alpha: 1,
+            name: "Rajah",
+            blue: 0.4235294,
+            green: 0.7254902,
+            hex: "#fcb96c"
+        },
+        {
+            red: 0.9921569,
+            alpha: 1,
+            name: "SandyBeach",
+            blue: 0.7098039,
+            green: 0.8627451,
+            hex: "#fddcb5"
+        },
+        {
+            red: 0.9960784,
+            alpha: 1,
+            name: "Sazerac",
+            blue: 0.8823529,
+            green: 0.945098,
+            hex: "#fef1e1"
+        }
+    ],
+    [
+        {
+            red: 0.654902,
+            alpha: 1,
+            name: "OrangeRoughy",
+            blue: 0.2,
+            green: 0.3176471,
+            hex: "#a75133"
+        },
+        {
+            red: 0.7764706,
+            alpha: 1,
+            name: "Ecstasy",
+            blue: 0.2117647,
+            green: 0.3686275,
+            hex: "#c65e36"
+        },
+        {
+            red: 0.854902,
+            alpha: 1,
+            name: "Jaffa",
+            blue: 0.2941177,
+            green: 0.4509804,
+            hex: "#da734b"
+        },
+        {
+            red: 0.9686275,
+            alpha: 1,
+            name: "OutrageousOrange",
+            blue: 0.2666667,
+            green: 0.4627451,
+            hex: "#f77644"
+        },
+        {
+            red: 0.9764706,
+            alpha: 1,
+            name: "Salmon",
+            blue: 0.4117647,
+            green: 0.5686275,
+            hex: "#f99169"
+        },
+        {
+            red: 0.9882353,
+            alpha: 1,
+            name: "Apricot",
+            blue: 0.7058824,
+            green: 0.7843137,
+            hex: "#fcc8b4"
+        },
+        {
+            red: 0.9960784,
+            alpha: 1,
+            name: "Chablis",
+            blue: 0.8823529,
+            green: 0.9137255,
+            hex: "#fee9e1"
+        }
+    ],
+    [
+        {
+            red: 0.6431373,
+            alpha: 1,
+            name: "MilanoRed",
+            blue: 0.1843137,
+            green: 0.1882353,
+            hex: "#a4302f"
+        },
+        {
+            red: 0.7607843,
+            alpha: 1,
+            name: "Mahogany",
+            blue: 0.2039216,
+            green: 0.2156863,
+            hex: "#c23734"
+        },
+        {
+            red: 0.8392157,
+            alpha: 1,
+            name: "Valencia",
+            blue: 0.2980392,
+            green: 0.3137255,
+            hex: "#d6504c"
+        },
+        {
+            red: 0.9490196,
+            alpha: 1,
+            name: "CarminePink",
+            blue: 0.254902,
+            green: 0.2705882,
+            hex: "#f24541"
+        },
+        {
+            red: 0.9607843,
+            alpha: 1,
+            name: "PastelRed",
+            blue: 0.4039216,
+            green: 0.4156863,
+            hex: "#f56a67"
+        },
+        {
+            red: 0.9803922,
+            alpha: 1,
+            name: "Sundown",
+            blue: 0.7019608,
+            green: 0.7098039,
+            hex: "#fab5b3"
+        },
+        {
+            red: 0.9921569,
+            alpha: 1,
+            name: "Pippin",
+            blue: 0.8823529,
+            green: 0.8823529,
+            hex: "#fde1e1"
+        }
+    ]
+];
+function getC(arg1, arg2) {
+    let hue;
+    let shad;
+    if (typeof arg1 === "string" && arg2 === null) {
+        for (let v of exports.PalleteArray) {
+            for (let c of v) {
+                if (c.name === arg1)
+                    return c;
+            }
+        }
+        throw "can't find colour";
+    }
+    else if (typeof arg1 === "number" && arg2 === null)
+        throw "invalid";
+    if (typeof arg1 === "number")
+        hue = arg1;
+    if (typeof arg2 === "number")
+        shad = arg2;
+    if (typeof arg1 === "string" && arg2 !== null)
+        hue = hues[arg1];
+    if (typeof arg2 === "string")
+        shad = shades[arg2];
+    try {
+        return exports.PalleteArray[hue][shad];
+    }
+    catch (error) {
+        throw error;
+    }
+}
+exports.getC = getC;
+//# sourceMappingURL=app.js.map
+});
+___scope___.file("capture.js", function(exports, require, module, __filename, __dirname){
+
+"use strict";
+// For Recording
+Object.defineProperty(exports, "__esModule", { value: true });
+/**
+ * Adds A frame to the recording and saves if at end
+ *
+ */
+function recordFrame(p, recorder, lastFrame) {
+    if (p.frameCount <= lastFrame) {
+        recorder.capture(document.getElementById('defaultCanvas0'));
+        if (p.frameCount === lastFrame) {
+            recorder.stop();
+            recorder.save();
+        }
+    }
+}
+exports.recordFrame = recordFrame;
+/**
+ * Set's up Recording
+ *
+ */
+function recordSetup() {
+    let recorder = new CCapture({
+        format: 'webm',
+        framerate: 30
+    });
+    let canvasObject = document.getElementById('defaultCanvas0');
+    recorder.start();
+    return recorder;
+}
+exports.recordSetup = recordSetup;
+//# sourceMappingURL=app.js.map
+});
+return ___scope___.entry = "index.js";
+});
+FuseBox.pkg("b-spline", {}, function(___scope___){
+___scope___.file("index.js", function(exports, require, module, __filename, __dirname){
+
+
+
+function interpolate(t, degree, points, knots, weights, result) {
+
+  var i,j,s,l;              // function-scoped iteration variables
+  var n = points.length;    // points count
+  var d = points[0].length; // point dimensionality
+
+  if(degree < 1) throw new Error('degree must be at least 1 (linear)');
+  if(degree > (n-1)) throw new Error('degree must be less than or equal to point count - 1');
+
+  if(!weights) {
+    // build weight vector of length [n]
+    weights = [];
+    for(i=0; i<n; i++) {
+      weights[i] = 1;
+    }
+  }
+
+  if(!knots) {
+    // build knot vector of length [n + degree + 1]
+    var knots = [];
+    for(i=0; i<n+degree+1; i++) {
+      knots[i] = i;
+    }
+  } else {
+    if(knots.length !== n+degree+1) throw new Error('bad knot vector length');
+  }
+
+  var domain = [
+    degree,
+    knots.length-1 - degree
+  ];
+
+  // remap t to the domain where the spline is defined
+  var low  = knots[domain[0]];
+  var high = knots[domain[1]];
+  t = t * (high - low) + low;
+
+  if(t < low || t > high) throw new Error('out of bounds');
+
+  // find s (the spline segment) for the [t] value provided
+  for(s=domain[0]; s<domain[1]; s++) {
+    if(t >= knots[s] && t <= knots[s+1]) {
+      break;
+    }
+  }
+
+  // convert points to homogeneous coordinates
+  var v = [];
+  for(i=0; i<n; i++) {
+    v[i] = [];
+    for(j=0; j<d; j++) {
+      v[i][j] = points[i][j] * weights[i];
+    }
+    v[i][d] = weights[i];
+  }
+
+  // l (level) goes from 1 to the curve degree + 1
+  var alpha;
+  for(l=1; l<=degree+1; l++) {
+    // build level l of the pyramid
+    for(i=s; i>s-degree-1+l; i--) {
+      alpha = (t - knots[i]) / (knots[i+degree+1-l] - knots[i]);
+
+      // interpolate each component
+      for(j=0; j<d+1; j++) {
+        v[i][j] = (1 - alpha) * v[i-1][j] + alpha * v[i][j];
+      }
+    }
+  }
+
+  // convert back to cartesian and return
+  var result = result || [];
+  for(i=0; i<d; i++) {
+    result[i] = v[s][i] / v[s][d];
+  }
+
+  return result;
+}
+
+
+module.exports = interpolate;
+
 });
 return ___scope___.entry = "index.js";
 });

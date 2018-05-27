@@ -6,7 +6,7 @@
  */
 export function recordFrame(p: p5, recorder: CCapture, lastFrame: number) {
   if (p.frameCount <= lastFrame) {
-    recorder.capture(document.getElementById("defaultCanvas0")!);
+    recorder.capture(document.getElementById('defaultCanvas0')!);
     if (p.frameCount === lastFrame) {
       recorder.stop();
       recorder.save();
@@ -19,10 +19,10 @@ export function recordFrame(p: p5, recorder: CCapture, lastFrame: number) {
  */
 export function recordSetup() {
   let recorder = new CCapture({
-    format: "webm",
-    framerate: 60
+    format: 'webm',
+    framerate: 30
   });
-  let canvasObject = document.getElementById("defaultCanvas0");
+  let canvasObject = document.getElementById('defaultCanvas0');
   recorder.start();
   return recorder;
 }
