@@ -31,3 +31,7 @@ declare function distToSegment(
  * @returns {number} max radius
  */
 declare function getMinDist(poly: [number, number][]): number;
+
+declare interface Number {
+  bwtn(lowerBound: number, upperBound: number, inclusive: boolean): boolean;
+}
